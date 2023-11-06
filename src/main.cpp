@@ -44,6 +44,13 @@ void handleRoot(AsyncWebServerRequest *request) {
     request->send(200, "text/html", html);
 }
 
+void saveWiFiCredentials(const String &ssid, const String &pass) {
+    preferences.begin("wifi-config", false);
+    preferences.putString("ssid", ssid);
+    preferences.putString("pass", pass);
+    preferences.end();
+}
+
 void handleSave(AsyncWebServerRequest *request) {
 
     if (request->method() != HTTP_POST) {
@@ -60,11 +67,12 @@ void handleSave(AsyncWebServerRequest *request) {
     ESP.restart();
 }
 
-void saveWiFiCredentials(const String &ssid, const String &pass) {
+void clearNVSData() {
+    Serial.println("Boot button pressed. Clearing NVS memory...");
     preferences.begin("wifi-config", false);
-    preferences.putString("ssid", ssid);
-    preferences.putString("pass", pass);
+    preferences.clear();
     preferences.end();
+    Serial.println("NVS memory cleared.");
 }
 
 void bootButtonISR(void *arg) {
@@ -72,12 +80,11 @@ void bootButtonISR(void *arg) {
     ESP.restart();
 }
 
-void clearNVSData() {
-    Serial.println("Boot button pressed. Clearing NVS memory...");
-    preferences.begin("wifi-config", false);
-    preferences.clear();
-    preferences.end();
-    Serial.println("NVS memory cleared.");
+void configureBootButton() {
+    gpio_set_direction(bootButtonPin, GPIO_MODE_INPUT);
+    gpio_set_intr_type(bootButtonPin, GPIO_INTR_NEGEDGE);
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(bootButtonPin, bootButtonISR, NULL);
 }
 
 void setup() {
@@ -89,13 +96,6 @@ void setup() {
     server.on("/", HTTP_GET, handleRoot);
     server.on("/save", HTTP_POST, handleSave);
     server.begin();
-}
-
-void configureBootButton() {
-    gpio_set_direction(bootButtonPin, GPIO_MODE_INPUT);
-    gpio_set_intr_type(bootButtonPin, GPIO_INTR_NEGEDGE);
-    gpio_install_isr_service(0);
-    gpio_isr_handler_add(bootButtonPin, bootButtonISR, NULL);
 }
 
 void loop() {
