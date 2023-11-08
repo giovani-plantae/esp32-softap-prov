@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>ESP32 Wi-Fi Configuration</title>
+    <style>
+         * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background-color: #fff;
+            padding: 2em;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        h1 {
+            margin: 0;
+            margin-bottom: 1rem;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        label {
+            text-align: left;
+            width: 100%;
+            display: block;
+            margin-bottom: .5em;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 1em;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-bottom: 1em;
+        }
+
+        input[type="submit"] {
+            background-color: #007bff;
+            color: #fff;
+            padding: 1em 2em;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        input[type="submit"]:hover {
+            background-color: #0056b3;
+        }
+
+        #loading-message {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>ESP32 Wi-Fi Configuration</h1>
+        <form method="post" action="/save">
+
+            <label>SSID</label>
+            <input type="text" name="ssid" required list="wifiNetworks">
+            <label>Pass</label>
+            <input type="text" name="pass" required>
+            <input type="submit" value="Save and Reboot">
+            <datalist id="wifiNetworks"></datalist>
+        </form>
+        <p id="loading-message">Loading available Wi-Fi networks...</p>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const loadingMessage = document.getElementById('loading-message');
+            const wifiNetworks = document.getElementById('wifiNetworks');
+
+            // Oculta a mensagem de carregamento
+            function hideLoadingMessage() {
+                loadingMessage.style.display = 'none';
+            }
+
+            // Filtra as redes únicas com base no sinal mais forte
+            function filterUniqueNetworks(data) {
+                const uniqueNetworks = {};
+
+                data.forEach(network => {
+                    const ssid = network.ssid;
+                    const rssi = network.rssi;
+
+                    if (!uniqueNetworks[ssid] || rssi > uniqueNetworks[ssid].rssi) {
+                        uniqueNetworks[ssid] = { ssid, rssi };
+                    }
+                });
+
+                return Object.values(uniqueNetworks);
+            }
+
+            // Preenche o datalist com as redes disponíveis
+            function populateWifiNetworks(data) {
+                data.forEach(network => {
+                    const option = document.createElement('option');
+                    option.value = network.ssid;
+                    wifiNetworks.appendChild(option);
+                });
+            }
+
+            // Busca a lista de redes Wi-Fi no servidor ESP32
+            fetch('/getWifiList')
+                .then(response => response.json())
+                .then(data => {
+                    const uniqueNetworks = filterUniqueNetworks(data);
+                    hideLoadingMessage();
+                    populateWifiNetworks(uniqueNetworks);
+                })
+                .catch(error => {
+                    hideLoadingMessage();
+                    console.error('Error fetching Wi-Fi networks:', error);
+                });
+        });
+
+
+    </script>
+</body>
+
+</html>

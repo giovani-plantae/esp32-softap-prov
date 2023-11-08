@@ -2,6 +2,10 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <Preferences.h>
+#include <SPIFFS.h>
+#include <ArduinoJson.h>
+#include "soc/timer_group_struct.h"
+#include "soc/timer_group_reg.h"
 
 AsyncWebServer server(80);
 Preferences preferences;
@@ -27,31 +31,60 @@ void setupWiFiClient() {
 
         Serial.print("Connected to Wi-Fi, IP: ");
         Serial.println(WiFi.localIP());
-    } else {
+    }
+    else {
         setupWiFiSoftAP();
     }
 }
 
-void handleRoot(AsyncWebServerRequest *request) {
-    String html = "<html><body>";
-    html += "<h1>ESP32 Wi-Fi Configuration</h1>";
-    html += "<form method='post' action='/save'>";
-    html += "SSID: <input type='text' name='ssid'><br>";
-    html += "Pass: <input type='text' name='pass'><br>";
-    html += "<input type='submit' value='Save and Reboot'>";
-    html += "</form></body></html>";
+void handleRoot(AsyncWebServerRequest* request) {
 
-    request->send(200, "text/html", html);
+    File file = SPIFFS.open("/wifi_config.html", "r");
+    if (!file) {
+        request->send(404, "text/plain", "File not found");
+        return;
+    }
+
+    request->send(SPIFFS, "/softap-prov.html", "text/html");
+    file.close();
 }
 
-void saveWiFiCredentials(const String &ssid, const String &pass) {
+void handleGetWiFiList(AsyncWebServerRequest* request) {
+    TIMERG0.wdt_wprotect = TIMG_WDT_WKEY_VALUE;
+    TIMERG0.wdt_feed = 1;
+    TIMERG0.wdt_wprotect = 0;
+
+    Serial.println("Scanning started");
+
+    int numberOfNetworks = WiFi.scanNetworks();
+
+    Serial.println("Scanning finished");
+
+    // Crie um objeto JSON para a lista
+    DynamicJsonDocument jsonDoc(1024);
+    JsonArray jsonArray = jsonDoc.to<JsonArray>();
+
+    for (int i = 0; i < numberOfNetworks; i++) {
+        JsonObject jsonNetwork = jsonArray.createNestedObject();
+        jsonNetwork["ssid"] = WiFi.SSID(i);
+        jsonNetwork["rssi"] = WiFi.RSSI(i);
+    }
+
+    // Serialize o JSON para uma string
+    String jsonResult;
+    serializeJson(jsonDoc, jsonResult);
+
+    request->send(200, "application/json", jsonResult);
+}
+
+void saveWiFiCredentials(const String& ssid, const String& pass) {
     preferences.begin("wifi-config", false);
     preferences.putString("ssid", ssid);
     preferences.putString("pass", pass);
     preferences.end();
 }
 
-void handleSave(AsyncWebServerRequest *request) {
+void handleSave(AsyncWebServerRequest* request) {
 
     if (request->method() != HTTP_POST) {
         request->send(405, "text/plain", "Method Not Allowed");
@@ -75,7 +108,7 @@ void clearNVSData() {
     Serial.println("NVS memory cleared.");
 }
 
-void bootButtonISR(void *arg) {
+void bootButtonISR(void* arg) {
     clearNVSData();
     ESP.restart();
 }
@@ -90,10 +123,16 @@ void configureBootButton() {
 void setup() {
     Serial.begin(115200);
 
+    if (!SPIFFS.begin(true)) {
+        Serial.println("An error occurred while initializing SPIFFS.");
+        return;
+    }
+
     configureBootButton();
     setupWiFiClient();
 
     server.on("/", HTTP_GET, handleRoot);
+    server.on("/getWifiList", HTTP_GET, handleGetWiFiList);
     server.on("/save", HTTP_POST, handleSave);
     server.begin();
 }
